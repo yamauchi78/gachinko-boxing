@@ -20,7 +20,9 @@
   color-scheme:dark;
 }
 [hidden]{display:none!important}
-html,body{height:100%;margin:0;overflow:hidden;background:var(--night);color:var(--ink)}
+html,body{height:100%;margin:0;overflow:hidden;background:var(--night);color:var(--ink);-webkit-text-size-adjust:100%;text-size-adjust:100%;touch-action:none}
+#app{position:fixed;left:0;top:0;width:100%;height:100%;overflow:hidden}
+html.rot #app{transform-origin:top left;transform:rotate(90deg) translateY(-100%)}
 body{font-family:var(--f-body);-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:none;-webkit-tap-highlight-color:transparent}
 #c{position:fixed;inset:0;width:100%;height:100%;display:block}
 button{font-family:inherit;color:inherit;cursor:pointer;touch-action:none}
@@ -80,7 +82,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--gold);outline-o
 @media (pointer:coarse){.keys{display:none}}
 
 /* ---------- screens ---------- */
-.screen{position:fixed;inset:0;display:grid;place-items:center;padding:16px;padding-left:calc(env(safe-area-inset-left,0px) + 16px);padding-right:calc(env(safe-area-inset-right,0px) + 16px);background:linear-gradient(90deg,rgba(8,12,24,.92) 0%,rgba(8,12,24,.55) 55%,rgba(8,12,24,.15));overflow:auto;touch-action:pan-y}
+.screen{position:fixed;inset:0;display:grid;place-items:center;padding:16px;padding-left:calc(env(safe-area-inset-left,0px) + 16px);padding-right:calc(env(safe-area-inset-right,0px) + 16px);background:linear-gradient(90deg,rgba(8,12,24,.92) 0%,rgba(8,12,24,.55) 55%,rgba(8,12,24,.15));overflow:auto;touch-action:pan-x pan-y}
 .card{width:min(560px,100%);display:grid;gap:14px;justify-self:start;margin-left:clamp(0px,4vw,60px)}
 .brand{font-family:var(--f-disp);font-size:clamp(34px,6.4vw,58px);line-height:1;letter-spacing:.01em;margin:0;text-wrap:balance}
 .brand em{font-style:normal;color:var(--gold)}
@@ -101,15 +103,11 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--gold);outline-o
 #result .card{justify-self:center;margin:0;text-align:center;justify-items:center}
 #resTitle{font-family:var(--f-disp);font-size:clamp(44px,10vw,90px);margin:0;line-height:1}
 #resTitle.win{color:var(--gold)} #resTitle.lose{color:#ff8a72}
-#rotate{position:fixed;inset:0;display:none;place-items:center;text-align:center;background:var(--night);padding:24px;z-index:9}
-#rotate p{margin:8px 0 18px;color:var(--dim);font-size:14px;line-height:1.6}
-#rotate .ph{width:44px;height:76px;border:3px solid var(--ink);border-radius:9px;margin:0 auto 14px;animation:turn 1.8s ease-in-out infinite}
-@keyframes turn{0%,30%{transform:rotate(0)}60%,100%{transform:rotate(-90deg)}}
-@media (orientation:portrait) and (pointer:coarse){body:not(.portraitOk) #rotate{display:grid}}
-@media (prefers-reduced-motion:reduce){#rotate .ph,#pad .upper.full span{animation:none}}
+@media (prefers-reduced-motion:reduce){#pad .upper.full span{animation:none}}
 </style>
 </head>
 <body>
+<div id="app">
 <canvas id="c" aria-label="ボクシングのリング"></canvas>
 <div id="flash"></div>
 <div id="stunVeil"></div>
@@ -195,13 +193,6 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--gold);outline-o
   </div>
 </section>
 
-<div id="rotate">
-  <div>
-    <div class="ph"></div>
-    <strong style="font-family:var(--f-disp);font-size:20px">横向きにしてください</strong>
-    <p>このゲームは横持ち専用です。</p>
-    <button type="button" class="big alt" id="portraitOk">このまま開く</button>
-  </div>
 </div>
 
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
@@ -713,19 +704,20 @@ let guardPtrs = new Set();
 function clearInput() { input.mx = input.my = 0; input.press = null; input.dodge = 0; guardPtrs.clear(); keys.clear(); stickReset(); }
 
 const zone = $('#stickZone'), base = $('#stickBase'), knob = $('#stickKnob');
-let stickId = null, sx = 0, sy = 0, stickHome = null;
+let stickId = null, sx = 0, sy = 0;
+// screen point -> point inside the (possibly rotated) game area
+function loc(e) { return document.documentElement.classList.contains('rot') ? { x: e.clientY, y: innerWidth - e.clientX } : { x: e.clientX, y: e.clientY }; }
 function stickReset() { stickId = null; input.mx = input.my = 0; knob.style.transform = ''; base.classList.remove('free'); base.style.left = base.style.top = base.style.bottom = ''; }
 zone.addEventListener('pointerdown', e => {
   if (stickId !== null) return; e.preventDefault(); sfx.unlock();
   stickId = e.pointerId; zone.setPointerCapture(e.pointerId);
-  const zr = zone.getBoundingClientRect();
-  sx = e.clientX; sy = e.clientY;
+  const q = loc(e); sx = q.x; sy = q.y;
   base.classList.add('free');
-  base.style.bottom = 'auto'; base.style.left = (sx - zr.left - 64) + 'px'; base.style.top = (sy - zr.top - 64) + 'px';
+  base.style.bottom = 'auto'; base.style.left = (sx - zone.offsetLeft - 64) + 'px'; base.style.top = (sy - zone.offsetTop - 64) + 'px';
 });
 zone.addEventListener('pointermove', e => {
   if (e.pointerId !== stickId) return;
-  let dx = e.clientX - sx, dy = e.clientY - sy; const L = Math.hypot(dx, dy), R = 52;
+  const q = loc(e); let dx = q.x - sx, dy = q.y - sy; const L = Math.hypot(dx, dy), R = 52;
   if (L > R) { dx *= R / L; dy *= R / L; }
   knob.style.transform = `translate(${dx}px,${dy}px)`;
   const dz = 6; input.mx = Math.abs(dx) < dz ? 0 : dx / R; input.my = Math.abs(dy) < dz ? 0 : dy / R;
@@ -748,6 +740,13 @@ document.querySelectorAll('#ctl button[data-a]').forEach(b => {
   b.addEventListener('contextmenu', e => e.preventDefault());
 });
 document.addEventListener('contextmenu', e => { if (mode !== 'menu') e.preventDefault(); });
+// stop pinch / double-tap zoom (iOS ignores user-scalable=no)
+['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
+document.addEventListener('touchstart', e => { if (e.touches.length > 1 || e.target.closest('#ctl')) e.preventDefault(); }, { passive: false });
+document.addEventListener('touchmove', e => { if (e.touches.length > 1 || !e.target.closest('.screen')) e.preventDefault(); }, { passive: false });
+let lastTouchEnd = 0;
+document.addEventListener('touchend', e => { const t = Date.now(); if (t - lastTouchEnd < 350 || e.target.closest('#ctl')) e.preventDefault(); lastTouchEnd = t; }, { passive: false });
+document.addEventListener('dblclick', e => e.preventDefault(), { passive: false });
 const KEYMAP = { j: 'jab', k: 'straight', l: 'hook', u: 'upper' };
 addEventListener('keydown', e => {
   if (e.target && e.target.tagName === 'INPUT') return;
@@ -1044,12 +1043,21 @@ function fx(dt) {
   F.g.attributes.color.needsUpdate = true;
 }
 
+const appEl = $('#app');
+const isRot = () => document.documentElement.classList.contains('rot');
+function layout() {
+  const portrait = innerHeight > innerWidth && matchMedia('(pointer: coarse)').matches;
+  document.documentElement.classList.toggle('rot', portrait);
+  appEl.style.width = (portrait ? innerHeight : innerWidth) + 'px';
+  appEl.style.height = (portrait ? innerWidth : innerHeight) + 'px';
+}
 function resize() {
-  const w = innerWidth, h = innerHeight;
+  layout();
+  const w = appEl.clientWidth, h = appEl.clientHeight;
   renderer.setSize(w, h, false); camera.aspect = w / h;
   camera.fov = w / h < 1.2 ? 82 : 72; camera.updateProjectionMatrix();
 }
-addEventListener('resize', resize); resize();
+addEventListener('resize', resize); addEventListener('orientationchange', () => setTimeout(resize, 200)); resize();
 
 function frame(now) {
   const dt = Math.min(50, now - last); last = now;
@@ -1089,7 +1097,6 @@ $('#again').addEventListener('click', () => {
     show('lobby');
   } else toMenu();
 });
-$('#portraitOk').addEventListener('click', () => document.body.classList.add('portraitOk'));
 toMenu();
 })();
 </script>
